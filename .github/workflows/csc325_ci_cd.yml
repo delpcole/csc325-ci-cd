@@ -1,46 +1,72 @@
 name: CSC325 CI/CD
 
-# Trigger: run on every push to main
+# Trigger: run automatically on every push to main
 on:
   push:
     branches: [main]
 
 jobs:
-  build-and-test:
-    name: Setup, Dependencies, Test
+  # Stage 1: check out the code and install Python
+  setup:
+    name: Setup
     runs-on: ubuntu-latest
     steps:
-      - name: Setup - check out code
-        uses: actions/checkout@v4
-
-      - name: Setup - install Python 3.12
-        uses: actions/setup-python@v5
+      - name: Check out code
+        uses: actions/checkout@v5
+      - name: Install Python 3.12
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Show Python version
+        run: python --version
 
-      - name: Dependencies - install requirements.txt
+  # Stage 2: install packages from requirements.txt
+  dependencies:
+    name: Dependencies
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install requirements.txt
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip list
 
-      - name: Test - run full test suite
+  # Stage 3: run the full test suite (a failing test fails the pipeline)
+  test:
+    name: Test
+    needs: dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install requirements.txt
+        run: pip install -r requirements.txt
+      - name: Run tests
         run: python manage.py test --verbosity 2
 
+  # Stage 4: deploy to Vercel, only after Test passes
   deploy:
     name: Deploy
-    # Deploy waits for the test job and only runs if it passed
-    needs: build-and-test
+    needs: test
     runs-on: ubuntu-latest
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
-
       - name: Deploy to Vercel (production)
         run: vercel deploy --prod --yes --token="$VERCEL_TOKEN"
+      - name: Show live URL
+        run: echo "Live at https://csc325-ci-cd.vercel.app/api/hello/"
